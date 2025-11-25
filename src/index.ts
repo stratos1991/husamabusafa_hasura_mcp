@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { z, ZodRawShape } from "zod";
+import { z /* ZodRawShape */ } from "zod";
 import { GraphQLClient, gql, ClientError } from "graphql-request";
 import {
   getIntrospectionQuery,
@@ -56,8 +56,8 @@ if (ADMIN_SECRET) {
 const gqlClient = new GraphQLClient(HASURA_ENDPOINT, { headers });
 
 async function makeGqlRequest<
-  T = any,
-  V extends Record<string, any> = Record<string, any>
+  T = unknown,
+  V extends Record<string, unknown> = Record<string, unknown>
 >(
   query: string,
   variables?: V,
@@ -172,9 +172,11 @@ server.tool(
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(
-        `[ERROR] Tool 'run_graphql_query' failed: ${error.message}`
+        `[ERROR] Tool 'run_graphql_query' failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
       );
       throw error;
     }
@@ -211,9 +213,11 @@ server.tool(
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(
-        `[ERROR] Tool 'run_graphql_mutation' failed: ${error.message}`
+        `[ERROR] Tool 'run_graphql_mutation' failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
       );
       throw error;
     }
@@ -246,7 +250,7 @@ server.tool(
       );
     }
     try {
-      const schema = await getIntrospectionSchema();
+      await getIntrospectionSchema();
 
       const query = gql`
         query GetTablesWithDescriptions {
@@ -263,7 +267,20 @@ server.tool(
         }
       `;
 
-      const result = await makeGqlRequest(query);
+      interface QueryRootResult {
+        __type?: {
+          fields?: Array<{
+            name: string;
+            description?: string | null;
+            type: {
+              name?: string;
+              kind: string;
+            };
+          }>;
+        };
+      }
+
+      const result = await makeGqlRequest<QueryRootResult>(query);
 
       const tablesData: Record<
         string,
@@ -302,7 +319,7 @@ server.tool(
 
           tablesData[currentSchema].push({
             name: field.name,
-            description: field.description,
+            description: field.description ?? null,
           });
         }
       }
@@ -319,8 +336,12 @@ server.tool(
           { type: "text", text: JSON.stringify(formattedOutput, null, 2) },
         ],
       };
-    } catch (error: any) {
-      console.error(`[ERROR] Tool 'list_tables' failed: ${error.message}`);
+    } catch (error: unknown) {
+      console.error(
+        `[ERROR] Tool 'list_tables' failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
       throw error;
     }
   }
@@ -384,8 +405,12 @@ server.tool(
       return {
         content: [{ type: "text", text: JSON.stringify(fieldInfo, null, 2) }],
       };
-    } catch (error: any) {
-      console.error(`[ERROR] Tool 'list_root_fields' failed: ${error.message}`);
+    } catch (error: unknown) {
+      console.error(
+        `[ERROR] Tool 'list_root_fields' failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
       throw error;
     }
   }
@@ -481,9 +506,11 @@ server.tool(
           { type: "text", text: JSON.stringify(formattedInfo, null, 2) },
         ],
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(
-        `[ERROR] Tool 'describe_graphql_type' failed: ${error.message}`
+        `[ERROR] Tool 'describe_graphql_type' failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
       );
       throw error;
     }
@@ -548,9 +575,11 @@ server.tool(
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(
-        `[ERROR] Tool 'preview_table_data' failed: ${error.message}`
+        `[ERROR] Tool 'preview_table_data' failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
       );
       throw error;
     }
@@ -624,11 +653,9 @@ server.tool(
     const variables = filter ? { filter } : {};
 
     try {
-      const rawResult = await makeGqlRequest(
-        query,
-        variables,
-        jwt ? { Authorization: `Bearer ${jwt}` } : undefined
-      );
+      const rawResult = await makeGqlRequest<
+        Record<string, { aggregate?: unknown }>
+      >(query, variables, jwt ? { Authorization: `Bearer ${jwt}` } : undefined);
 
       let finalResult = null;
       if (
@@ -648,7 +675,7 @@ server.tool(
       return {
         content: [{ type: "text", text: JSON.stringify(finalResult, null, 2) }],
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (error instanceof ClientError && error.response?.errors) {
         const gqlErrors = error.response.errors
           .map((e) => e.message)
@@ -661,7 +688,11 @@ server.tool(
           `GraphQL aggregation failed: ${gqlErrors}. Check table/field names and filter syntax.`
         );
       }
-      console.error(`[ERROR] Tool 'aggregate_data' failed: ${error.message}`);
+      console.error(
+        `[ERROR] Tool 'aggregate_data' failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
       throw error;
     }
   }
@@ -713,11 +744,13 @@ server.tool(
           { type: "text", text: `Health check successful. ${resultText}` },
         ],
       };
-    } catch (error: any) {
-      console.error(`[ERROR] Tool 'health_check' failed: ${error.message}`);
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      console.error(`[ERROR] Tool 'health_check' failed: ${errorMessage}`);
       return {
         content: [
-          { type: "text", text: `Health check failed: ${error.message}` },
+          { type: "text", text: `Health check failed: ${errorMessage}` },
         ],
         isError: false,
       };
@@ -745,7 +778,7 @@ server.tool(
       `[INFO] Executing tool 'describe_table' for table: ${tableName} in schema: ${schemaName}`
     );
     try {
-      const schema = await getIntrospectionSchema();
+      await getIntrospectionSchema();
 
       const tableTypeQuery = gql`
         query GetTableType($typeName: String!) {
@@ -789,7 +822,16 @@ server.tool(
         }
       `;
 
-      const tableTypeResult = await makeGqlRequest(
+      interface TypeResult {
+        __type?: {
+          name: string;
+          kind: string;
+          description?: string | null;
+          fields: IntrospectionField[];
+        };
+      }
+
+      const tableTypeResult = await makeGqlRequest<TypeResult>(
         tableTypeQuery,
         { typeName: tableName },
         jwt ? { Authorization: `Bearer ${jwt}` } : undefined
@@ -801,7 +843,7 @@ server.tool(
         );
         const pascalCaseName =
           tableName.charAt(0).toUpperCase() + tableName.slice(1);
-        const alternativeResult = await makeGqlRequest(
+        const alternativeResult = await makeGqlRequest<TypeResult>(
           tableTypeQuery,
           { typeName: pascalCaseName },
           jwt ? { Authorization: `Bearer ${jwt}` } : undefined
@@ -814,49 +856,58 @@ server.tool(
         tableTypeResult.__type = alternativeResult.__type;
       }
 
-      const columnsInfo = tableTypeResult.__type.fields.map((field: any) => {
-        let typeInfo = field.type;
-        let typeString = "";
-        let isNonNull = false;
-        let isList = false;
+      const columnsInfo = tableTypeResult.__type.fields.map(
+        (field: IntrospectionField) => {
+          let typeInfo = field.type;
+          let typeString = "";
+          let isNonNull = false;
+          let isList = false;
 
-        while (typeInfo) {
-          if (typeInfo.kind === "NON_NULL") {
-            isNonNull = true;
-            typeInfo = typeInfo.ofType;
-          } else if (typeInfo.kind === "LIST") {
-            isList = true;
-            typeInfo = typeInfo.ofType;
-          } else {
-            typeString = typeInfo.name || "unknown";
-            break;
+          while (typeInfo) {
+            if (typeInfo.kind === "NON_NULL") {
+              isNonNull = true;
+              typeInfo = typeInfo.ofType;
+            } else if (typeInfo.kind === "LIST") {
+              isList = true;
+              typeInfo = typeInfo.ofType;
+            } else {
+              typeString = typeInfo.name || "unknown";
+              break;
+            }
           }
-        }
 
-        let fullTypeString = "";
-        if (isList) {
-          fullTypeString = `[${typeString}]`;
-        } else {
-          fullTypeString = typeString;
-        }
-        if (isNonNull) {
-          fullTypeString += "!";
-        }
+          let fullTypeString = "";
+          if (isList) {
+            fullTypeString = `[${typeString}]`;
+          } else {
+            fullTypeString = typeString;
+          }
+          if (isNonNull) {
+            fullTypeString += "!";
+          }
 
-        return {
-          name: field.name,
-          type: fullTypeString,
-          description: field.description || null,
-          args: field.args?.length ? field.args : null,
-        };
-      });
+          return {
+            name: field.name,
+            type: fullTypeString,
+            description: field.description || null,
+            args: field.args?.length ? field.args : null,
+          };
+        }
+      );
+
+      interface ColumnInfo {
+        name: string;
+        type: string;
+        description: string | null;
+        args: unknown[] | null;
+      }
 
       const result = {
         table: {
           name: tableName,
           schema: schemaName,
           description: tableTypeResult.__type.description || null,
-          columns: columnsInfo.sort((a: any, b: any) =>
+          columns: (columnsInfo as ColumnInfo[]).sort((a, b) =>
             a.name.localeCompare(b.name)
           ),
         },
@@ -865,8 +916,12 @@ server.tool(
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
       };
-    } catch (error: any) {
-      console.error(`[ERROR] Tool 'describe_table' failed: ${error.message}`);
+    } catch (error: unknown) {
+      console.error(
+        `[ERROR] Tool 'describe_table' failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
       throw error;
     }
   }
