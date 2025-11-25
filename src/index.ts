@@ -61,10 +61,14 @@ async function makeGqlRequest<
 >(
   query: string,
   variables?: V,
-  requestHeaders?: Record<string, string>
+  requestHeaders?: Record<string, string>,
+  jwt?: string
 ): Promise<T> {
   try {
-    const combinedHeaders = { ...headers, ...requestHeaders };
+    const authHeaders: Record<string, string> = jwt
+      ? { Authorization: `Bearer ${jwt}` }
+      : {};
+    const combinedHeaders = { ...headers, ...authHeaders, ...requestHeaders };
     return await gqlClient.request<T>(query, variables, combinedHeaders);
   } catch (error) {
     if (error instanceof ClientError) {
@@ -84,14 +88,21 @@ async function makeGqlRequest<
 
 let introspectionSchema: IntrospectionSchema | null = null;
 
-async function getIntrospectionSchema(): Promise<IntrospectionSchema> {
+async function getIntrospectionSchema(
+  jwt?: string
+): Promise<IntrospectionSchema> {
   if (introspectionSchema) {
     return introspectionSchema;
   }
   console.log("[INFO] Fetching GraphQL schema via introspection...");
   const introspectionQuery = getIntrospectionQuery();
   try {
-    const result = await makeGqlRequest<IntrospectionQuery>(introspectionQuery);
+    const result = await makeGqlRequest<IntrospectionQuery>(
+      introspectionQuery,
+      {},
+      undefined,
+      jwt
+    );
     if (!result.__schema) {
       throw new Error("Introspection query did not return a __schema object.");
     }
@@ -164,11 +175,7 @@ server.tool(
       throw new Error("This tool only supports read-only queries...");
     }
     try {
-      const result = await makeGqlRequest(
-        query,
-        variables,
-        jwt ? { Authorization: `Bearer ${jwt}` } : undefined
-      );
+      const result = await makeGqlRequest(query, variables, undefined, jwt);
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
       };
@@ -205,11 +212,7 @@ server.tool(
       );
     }
     try {
-      const result = await makeGqlRequest(
-        mutation,
-        variables,
-        jwt ? { Authorization: `Bearer ${jwt}` } : undefined
-      );
+      const result = await makeGqlRequest(mutation, variables, undefined, jwt);
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
       };
@@ -250,7 +253,7 @@ server.tool(
       );
     }
     try {
-      await getIntrospectionSchema();
+      await getIntrospectionSchema(jwt);
 
       const query = gql`
         query GetTablesWithDescriptions {
@@ -280,7 +283,12 @@ server.tool(
         };
       }
 
-      const result = await makeGqlRequest<QueryRootResult>(query);
+      const result = await makeGqlRequest<QueryRootResult>(
+        query,
+        undefined,
+        undefined,
+        jwt
+      );
 
       const tablesData: Record<
         string,
@@ -373,7 +381,7 @@ server.tool(
       );
     }
     try {
-      const schema = await getIntrospectionSchema();
+      const schema = await getIntrospectionSchema(jwt);
       let fields: IntrospectionField[] = [];
       if ((!fieldType || fieldType === "QUERY") && schema.queryType) {
         const queryRoot = schema.types.find(
@@ -439,7 +447,7 @@ server.tool(
       );
     }
     try {
-      const schema = await getIntrospectionSchema();
+      const schema = await getIntrospectionSchema(jwt);
       const typeInfo = schema.types.find((t) => t.name === typeName);
       if (!typeInfo) {
         throw new Error(`Type '${typeName}' not found in the schema.`);
@@ -539,7 +547,7 @@ server.tool(
       `[INFO] Executing tool 'preview_table_data' for table: ${tableName}, limit: ${limit}`
     );
     try {
-      const schema = await getIntrospectionSchema();
+      const schema = await getIntrospectionSchema(jwt);
       const tableType = schema.types.find(
         (t) => t.name === tableName && t.kind === "OBJECT"
       ) as IntrospectionObjectType | undefined;
@@ -567,11 +575,7 @@ server.tool(
       const fieldsString = scalarFields.join("\n          ");
       const query = gql` query PreviewData($limit: Int!) { ${tableName}(limit: $limit) { ${fieldsString} } }`;
       const variables = { limit };
-      const result = await makeGqlRequest(
-        query,
-        variables,
-        jwt ? { Authorization: `Bearer ${jwt}` } : undefined
-      );
+      const result = await makeGqlRequest(query, variables, undefined, jwt);
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
       };
@@ -655,7 +659,7 @@ server.tool(
     try {
       const rawResult = await makeGqlRequest<
         Record<string, { aggregate?: unknown }>
-      >(query, variables, jwt ? { Authorization: `Bearer ${jwt}` } : undefined);
+      >(query, variables, undefined, jwt);
 
       let finalResult = null;
       if (
@@ -730,11 +734,7 @@ server.tool(
             __typename
           }
         `;
-        const result = await makeGqlRequest(
-          query,
-          undefined,
-          jwt ? { Authorization: `Bearer ${jwt}` } : undefined
-        );
+        const result = await makeGqlRequest(query, undefined, undefined, jwt);
         resultText = `GraphQL endpoint ${HASURA_ENDPOINT} is responsive. Result: ${JSON.stringify(
           result
         )}`;
@@ -778,7 +778,7 @@ server.tool(
       `[INFO] Executing tool 'describe_table' for table: ${tableName} in schema: ${schemaName}`
     );
     try {
-      await getIntrospectionSchema();
+      await getIntrospectionSchema(jwt);
 
       const tableTypeQuery = gql`
         query GetTableType($typeName: String!) {
@@ -834,7 +834,8 @@ server.tool(
       const tableTypeResult = await makeGqlRequest<TypeResult>(
         tableTypeQuery,
         { typeName: tableName },
-        jwt ? { Authorization: `Bearer ${jwt}` } : undefined
+        undefined,
+        jwt
       );
 
       if (!tableTypeResult.__type) {
@@ -846,7 +847,8 @@ server.tool(
         const alternativeResult = await makeGqlRequest<TypeResult>(
           tableTypeQuery,
           { typeName: pascalCaseName },
-          jwt ? { Authorization: `Bearer ${jwt}` } : undefined
+          undefined,
+          jwt
         );
         if (!alternativeResult.__type) {
           throw new Error(
