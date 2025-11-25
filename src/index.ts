@@ -153,14 +153,22 @@ server.tool(
       .record(z.unknown())
       .optional()
       .describe("Optional. An object containing variables..."),
+    jwt: z
+      .string()
+      .optional()
+      .describe("Optional. JWT id Token to include in the request."),
   },
-  async ({ query, variables }) => {
+  async ({ query, variables, jwt }) => {
     console.log(`[INFO] Executing tool 'run_graphql_query'`);
     if (query.trim().toLowerCase().startsWith("mutation")) {
       throw new Error("This tool only supports read-only queries...");
     }
     try {
-      const result = await makeGqlRequest(query, variables);
+      const result = await makeGqlRequest(
+        query,
+        variables,
+        jwt ? { Authorization: `Bearer ${jwt}` } : undefined
+      );
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
       };
@@ -182,8 +190,12 @@ server.tool(
       .record(z.unknown())
       .optional()
       .describe("Optional. An object containing variables..."),
+    jwt: z
+      .string()
+      .optional()
+      .describe("Optional. JWT id Token to include in the request."),
   },
-  async ({ mutation, variables }) => {
+  async ({ mutation, variables, jwt }) => {
     console.log(`[INFO] Executing tool 'run_graphql_mutation'`);
     if (!mutation.trim().toLowerCase().startsWith("mutation")) {
       throw new Error(
@@ -191,7 +203,11 @@ server.tool(
       );
     }
     try {
-      const result = await makeGqlRequest(mutation, variables);
+      const result = await makeGqlRequest(
+        mutation,
+        variables,
+        jwt ? { Authorization: `Bearer ${jwt}` } : undefined
+      );
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
       };
@@ -214,11 +230,21 @@ server.tool(
       .describe(
         "Optional. The database schema name to filter results. If omitted, returns tables from all schemas."
       ),
+    jwt: z
+      .string()
+      .optional()
+      .describe("Optional. JWT id Token to include in the request."),
   },
-  async ({ schemaName }) => {
+  async ({ schemaName, jwt }) => {
     console.log(
       `[INFO] Executing tool 'list_tables' for schema: ${schemaName || "ALL"}`
     );
+    // Note: JWT is accepted but not used for introspection queries
+    if (jwt) {
+      console.log(
+        "[INFO] JWT provided but not used for introspection-based operation"
+      );
+    }
     try {
       const schema = await getIntrospectionSchema();
 
@@ -308,13 +334,23 @@ server.tool(
       .enum(["QUERY", "MUTATION", "SUBSCRIPTION"])
       .optional()
       .describe("Optional. Filter by 'QUERY'..."),
+    jwt: z
+      .string()
+      .optional()
+      .describe("Optional. JWT id Token to include in the request."),
   },
-  async ({ fieldType }) => {
+  async ({ fieldType, jwt }) => {
     console.log(
       `[INFO] Executing tool 'list_root_fields', filtering by: ${
         fieldType || "ALL"
       }`
     );
+    // Note: JWT is accepted but not used for introspection queries
+    if (jwt) {
+      console.log(
+        "[INFO] JWT provided but not used for introspection-based operation"
+      );
+    }
     try {
       const schema = await getIntrospectionSchema();
       let fields: IntrospectionField[] = [];
@@ -362,11 +398,21 @@ server.tool(
     typeName: z
       .string()
       .describe("The exact, case-sensitive name of the GraphQL type..."),
+    jwt: z
+      .string()
+      .optional()
+      .describe("Optional. JWT id Token to include in the request."),
   },
-  async ({ typeName }) => {
+  async ({ typeName, jwt }) => {
     console.log(
       `[INFO] Executing tool 'describe_graphql_type' for type: ${typeName}`
     );
+    // Note: JWT is accepted but not used for introspection queries
+    if (jwt) {
+      console.log(
+        "[INFO] JWT provided but not used for introspection-based operation"
+      );
+    }
     try {
       const schema = await getIntrospectionSchema();
       const typeInfo = schema.types.find((t) => t.name === typeName);
@@ -456,8 +502,12 @@ server.tool(
       .optional()
       .default(5)
       .describe("Optional. Maximum number of rows..."),
+    jwt: z
+      .string()
+      .optional()
+      .describe("Optional. JWT id Token to include in the request."),
   },
-  async ({ tableName, limit }) => {
+  async ({ tableName, limit, jwt }) => {
     console.log(
       `[INFO] Executing tool 'preview_table_data' for table: ${tableName}, limit: ${limit}`
     );
@@ -490,7 +540,11 @@ server.tool(
       const fieldsString = scalarFields.join("\n          ");
       const query = gql` query PreviewData($limit: Int!) { ${tableName}(limit: $limit) { ${fieldsString} } }`;
       const variables = { limit };
-      const result = await makeGqlRequest(query, variables);
+      const result = await makeGqlRequest(
+        query,
+        variables,
+        jwt ? { Authorization: `Bearer ${jwt}` } : undefined
+      );
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
       };
@@ -519,8 +573,12 @@ server.tool(
       .record(z.unknown())
       .optional()
       .describe("Optional. A Hasura GraphQL 'where' filter object..."),
+    jwt: z
+      .string()
+      .optional()
+      .describe("Optional. JWT id Token to include in the request."),
   },
-  async ({ tableName, aggregateFunction, field, filter }) => {
+  async ({ tableName, aggregateFunction, field, filter, jwt }) => {
     console.log(
       `[INFO] Executing tool 'aggregate_data': ${aggregateFunction} on ${tableName}...`
     );
@@ -566,7 +624,11 @@ server.tool(
     const variables = filter ? { filter } : {};
 
     try {
-      const rawResult = await makeGqlRequest(query, variables);
+      const rawResult = await makeGqlRequest(
+        query,
+        variables,
+        jwt ? { Authorization: `Bearer ${jwt}` } : undefined
+      );
 
       let finalResult = null;
       if (
@@ -614,8 +676,12 @@ server.tool(
       .url()
       .optional()
       .describe("Optional. A specific HTTP health check URL..."),
+    jwt: z
+      .string()
+      .optional()
+      .describe("Optional. JWT id Token to include in the request."),
   },
-  async ({ healthEndpointUrl }) => {
+  async ({ healthEndpointUrl, jwt }) => {
     console.log(`[INFO] Executing tool 'health_check'...`);
     try {
       let resultText = "";
@@ -633,7 +699,11 @@ server.tool(
             __typename
           }
         `;
-        const result = await makeGqlRequest(query);
+        const result = await makeGqlRequest(
+          query,
+          undefined,
+          jwt ? { Authorization: `Bearer ${jwt}` } : undefined
+        );
         resultText = `GraphQL endpoint ${HASURA_ENDPOINT} is responsive. Result: ${JSON.stringify(
           result
         )}`;
@@ -665,8 +735,12 @@ server.tool(
       .optional()
       .default("public")
       .describe("Optional. The database schema name, defaults to 'public'"),
+    jwt: z
+      .string()
+      .optional()
+      .describe("Optional. JWT id Token to include in the request."),
   },
-  async ({ tableName, schemaName }) => {
+  async ({ tableName, schemaName, jwt }) => {
     console.log(
       `[INFO] Executing tool 'describe_table' for table: ${tableName} in schema: ${schemaName}`
     );
@@ -715,9 +789,11 @@ server.tool(
         }
       `;
 
-      const tableTypeResult = await makeGqlRequest(tableTypeQuery, {
-        typeName: tableName,
-      });
+      const tableTypeResult = await makeGqlRequest(
+        tableTypeQuery,
+        { typeName: tableName },
+        jwt ? { Authorization: `Bearer ${jwt}` } : undefined
+      );
 
       if (!tableTypeResult.__type) {
         console.log(
@@ -725,9 +801,11 @@ server.tool(
         );
         const pascalCaseName =
           tableName.charAt(0).toUpperCase() + tableName.slice(1);
-        const alternativeResult = await makeGqlRequest(tableTypeQuery, {
-          typeName: pascalCaseName,
-        });
+        const alternativeResult = await makeGqlRequest(
+          tableTypeQuery,
+          { typeName: pascalCaseName },
+          jwt ? { Authorization: `Bearer ${jwt}` } : undefined
+        );
         if (!alternativeResult.__type) {
           throw new Error(
             `Table '${tableName}' not found in schema. Check the table name and schema.`
